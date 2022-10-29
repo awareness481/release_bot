@@ -88,7 +88,7 @@ async fn crab(s: &Sender<Release>) -> octocrab::Result<()> {
             .repos(repo_owner.to_string(), repo_name.to_string())
             .events()
             .etag(etag)
-            .per_page(100)
+            .per_page(10)
             .send()
             .await?;
         if let Some(page) = response.value {
