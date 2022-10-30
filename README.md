@@ -1,4 +1,4 @@
-A bot to
+A bot to post github releases of a repo to your discord channel
 
 ### Instructions
 
