@@ -3,6 +3,7 @@ use octocrab::models::events::payload::EventPayload;
 use octocrab::models::events::EventType::UnknownEvent;
 mod md;
 mod types;
+use octocrab::etag::EntityTag;
 use octocrab::Octocrab;
 use octocrab::{etag::Etagged, models::events::Event, Page};
 use serde::de::IntoDeserializer;
@@ -13,6 +14,7 @@ use serenity::model::id::ChannelId;
 use serenity::prelude::*;
 use std::collections::VecDeque;
 use std::env;
+use std::io::{Read, Write};
 use tokio::sync::mpsc::{self, Sender};
 
 const DELAY_MS: u64 = 500;
@@ -33,13 +35,15 @@ impl EventHandler for Handler {
         });
 
         while let Some(res) = rx.recv().await {
+            // dbg!(&res.release);
             ChannelId(channel_id.parse().unwrap())
                 .send_message(&ctx, |m| {
-                    m.embed(|e| {
-                        e.title(res.release.tag_name)
-                            .description(md::parse_string(&res.release.body.unwrap()))
-                            .color(0x00ff00)
-                    })
+                    m.content(format!(
+                        "**{}**\n {} {}",
+                        res.release.tag_name,
+                        md::parse_string(&res.release.body.unwrap()),
+                        res.release.html_url
+                    ))
                 })
                 .await
                 .unwrap();
@@ -72,7 +76,7 @@ async fn main() {
 }
 
 async fn crab(s: &Sender<Release>) -> octocrab::Result<()> {
-    let mut etag = None;
+    let mut etag: Option<EntityTag> = None;
     let mut seen = VecDeque::with_capacity(TRACKING_CAPACITY);
 
     let token = env::var("GITHUB_TOKEN").expect("GITHUB_TOKEN env variable is required");
@@ -83,6 +87,21 @@ async fn crab(s: &Sender<Release>) -> octocrab::Result<()> {
         .personal_token(token.to_string())
         .build()?;
 
+    // initialize seen vec with ids saved to file
+    let mut f = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .open("./.seen_ids")
+        .unwrap();
+
+    let mut buf = String::new();
+    f.read_to_string(&mut buf).unwrap();
+
+    for line in buf.lines() {
+        seen.push_front(String::from(line));
+    }
+
     loop {
         let response: Etagged<Page<Event>> = octo
             .repos(repo_owner.to_string(), repo_name.to_string())
@@ -91,6 +110,7 @@ async fn crab(s: &Sender<Release>) -> octocrab::Result<()> {
             .per_page(10)
             .send()
             .await?;
+
         if let Some(page) = response.value {
             for event in page {
                 // If an etag changes and we get a new page, this page may contain events we have
@@ -110,10 +130,15 @@ async fn crab(s: &Sender<Release>) -> octocrab::Result<()> {
                     if seen.len() == TRACKING_CAPACITY {
                         seen.pop_back();
                     }
-                    seen.push_front(event.id);
+                    let id = event.id.as_str();
+                    seen.push_front(String::from(id));
+
+                    f.write_all(format!("{}\n", id).as_bytes()).unwrap();
+                    f.flush().unwrap();
                 }
             }
         }
+
         etag = response.etag;
         tokio::time::sleep(tokio::time::Duration::from_millis(DELAY_MS)).await;
     }
@@ -129,7 +154,6 @@ impl From<&EventPayload> for Release {
     fn from(payload: &EventPayload) -> Self {
         match payload {
             EventPayload::UnknownEvent(payload) => {
-                dbg!(&payload);
                 return serde_json::from_value(payload.to_owned().into_deserializer()).unwrap();
             }
             _ => panic!("unexpected event payload encountered: {:#?}", payload),
