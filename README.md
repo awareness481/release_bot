@@ -9,6 +9,5 @@ A bot to post github releases of a repo to your discord channel
      - Grant "Message content intent" permission
    - `GITHUB_TOKEN` https://github.com/settings/tokens No special permissions
    - `CHANNEL_ID` ID of the channel you want the release messages
-   - `REPO_OWNER` & `REPO_NAME` In `https://github.com/microsoft/TypeScript` the `REPO_OWNER` would be `microsoft`  
-      and the `REPO_NAME` would be `TypeScript`
+   - `REPO_OWNER` & `REPO_NAME` In `https://github.com/microsoft/TypeScript` the `REPO_OWNER` would be `microsoft` and the `REPO_NAME` would be `TypeScript`
 3. `cargo run` for dev or `cargo run --release` for prod
